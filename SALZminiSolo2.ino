@@ -31,8 +31,6 @@ static int delays[NCOLORS] = { 2, 4, 8, 16, 32 };
 void
 DispLevel(int lv) {
   pValue = lv;
-Serial.print("pValue:");
-Serial.println(pValue);
 }
 
 int
@@ -43,13 +41,11 @@ WlRate(int wl)
   //センサーを外に出した状態：2100
   const int wetWl = 1400;
   const int dryWl = 2100;
+  int ret = (int)((1.0 - ((float)(wl - wetWl) / (float)(dryWl - wetWl))) * 100.0);
 
-  char buf[256];
-  sprintf(buf, "wl:%d wetWl:%d dryWl:%d\n", wl, wetWl, dryWl);
-  Serial.print(buf);
-
-  return (int)((1.0 - ((float)(wl - wetWl) / (float)(dryWl - wetWl))) * 100.0);
+  return (ret < 0) ? 0 : ((ret > 99) ? 99 : ret);
 }
+
 
 int
 GetWl(void)
@@ -75,6 +71,14 @@ PrintData(int wl) {
   Serial.printf("2:c:%d\n", c);
 }
 
+int
+GetDispLevel(void)
+{
+  int ret;
+  ret = pValue / 10;
+  ret = (ret > 4) ? 4 : ret;
+  return ret;
+}
 
 //---------------------------------------
 
@@ -85,16 +89,12 @@ void task1(void * pvParameters)
   int gPrev = 0;
   int bPrev = 0;
   while (1) {
-    int lv = pValue / 20;
+    int lv = GetDispLevel();
     a = (a < 360) ? ++a : 0;
     float v = (sin(PI * (float)a / 180.0) + 1.0) / 2.0;
     int r = (float)colorRs[lv] * v;
     int g = (float)colorGs[lv] * v;
     int b = (float)colorBs[lv] * v;
-
-//    char buf[256];
-//    sprintf(buf, "a:%3d lv:%d RGB(%02X, %02X, %02X)", a, lv, r, g, b);
-//    Serial.println(buf);
 
     if (r != rPrev || g != gPrev || b != bPrev) {
       M5.dis.drawpix(0, RGB(r, g, b));
@@ -133,14 +133,14 @@ void loop()
   int wl = WlRate(GetWl());
   DispLevel(wl);
   PrintData(wl);
+  Serial.print("wl:");
+  Serial.println(wl);
 
-  if(wl < 30){
+  if (wl < 30) {
     digitalWrite(PUMP_PIN, true);
-    //M5.dis.drawpix(P(4, 4), RGB(0xf0, 0xf0, 0));
     Serial.println("PUMP ON");
     delay(PUMP_TIME);
     digitalWrite(PUMP_PIN, false);
-    //M5.dis.drawpix(P(4, 4), RGB(0, 0, 0));
     Serial.println("PUMP OFF");
   }
   else
