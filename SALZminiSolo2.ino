@@ -3,7 +3,21 @@
 
 #include "M5Atom.h"
 
+//デモモード(ON:1, OFF:0)
+//#define DEMO_MODE 1
+#define DEMO_MODE 0
+
+#define P(col, row)   (((row) * 5) + (col))
 #define RGB(r, g, b)  (((g) << 16) + ((r) << 8) + (b))
+
+#define SECONDS(s)    ((s) * 1000)
+#define MINUTES(m)    SECONDS(m * 60)
+
+const int WAIT_TIME = (DEMO_MODE) ? SECONDS(10) : MINUTES(20);
+const int PUMP_TIME = (DEMO_MODE) ? SECONDS(10) : MINUTES(2);
+
+#define INPUT_PIN 32
+#define PUMP_PIN 26
 
 static int pValue = 0;
 
@@ -12,6 +26,57 @@ static int colorRs[NCOLORS] = { 0x60, 0x50, 0x30, 0x00, 0x00 };
 static int colorGs[NCOLORS] = { 0x00, 0x10, 0x30, 0x50, 0x00 };
 static int colorBs[NCOLORS] = { 0x00, 0x00, 0x00, 0x10, 0x60 };
 static int delays[NCOLORS] = { 2, 4, 8, 16, 32 };
+
+
+void
+DispLevel(int lv) {
+  pValue = lv;
+Serial.print("pValue:");
+Serial.println(pValue);
+}
+
+int
+WlRate(int wl)
+{
+  //校正済の水分％を返す。
+  //センサーを水に浸けた状態：1400
+  //センサーを外に出した状態：2100
+  const int wetWl = 1400;
+  const int dryWl = 2100;
+
+  char buf[256];
+  sprintf(buf, "wl:%d wetWl:%d dryWl:%d\n", wl, wetWl, dryWl);
+  Serial.print(buf);
+
+  return (int)((1.0 - ((float)(wl - wetWl) / (float)(dryWl - wetWl))) * 100.0);
+}
+
+int
+GetWl(void)
+{
+  float val = 0.0;
+  pinMode(INPUT_PIN, INPUT);
+  for (int i = 0; i < 10; i++) {
+    float v = analogRead(INPUT_PIN);
+    //Serial.printf("ML(%d):%8.3f\r\n", i, v);
+    val += v;
+    delay(10);
+  }
+  return (int)(val / 10.0);
+}
+
+void
+PrintData(int wl) {
+  static int c = 0;
+
+  c++;
+  Serial.printf("SendData():\n");
+  Serial.printf("1:waterLevel:%d\n", wl);
+  Serial.printf("2:c:%d\n", c);
+}
+
+
+//---------------------------------------
 
 void task1(void * pvParameters)
 {
@@ -27,9 +92,9 @@ void task1(void * pvParameters)
     int g = (float)colorGs[lv] * v;
     int b = (float)colorBs[lv] * v;
 
-    char buf[256];
-    sprintf(buf, "a:%3d lv:%d RGB(%02X, %02X, %02X)", a, lv, r, g, b);
-    Serial.println(buf);
+//    char buf[256];
+//    sprintf(buf, "a:%3d lv:%d RGB(%02X, %02X, %02X)", a, lv, r, g, b);
+//    Serial.println(buf);
 
     if (r != rPrev || g != gPrev || b != bPrev) {
       M5.dis.drawpix(0, RGB(r, g, b));
@@ -44,8 +109,12 @@ void task1(void * pvParameters)
 
 void setup()
 {
+  Serial.begin(115200);
   M5.begin(true, false, true);
-  delay(10);
+
+  pinMode(INPUT_PIN, INPUT);
+  pinMode(PUMP_PIN, OUTPUT);
+
   M5.dis.drawpix(0, RGB(0x00, 0x00, 0x00));
   
   // Task 1
@@ -61,10 +130,19 @@ void setup()
 
 void loop()
 {
-  if (M5.Btn.wasPressed()) {
-    pValue = ((pValue += 10) < 100) ? pValue : 0;
-  }
+  int wl = WlRate(GetWl());
+  DispLevel(wl);
+  PrintData(wl);
 
-  delay(10);
-  M5.update();
+  if(wl < 30){
+    digitalWrite(PUMP_PIN, true);
+    //M5.dis.drawpix(P(4, 4), RGB(0xf0, 0xf0, 0));
+    Serial.println("PUMP ON");
+    delay(PUMP_TIME);
+    digitalWrite(PUMP_PIN, false);
+    //M5.dis.drawpix(P(4, 4), RGB(0, 0, 0));
+    Serial.println("PUMP OFF");
+  }
+  else
+    delay(WAIT_TIME);
 }
